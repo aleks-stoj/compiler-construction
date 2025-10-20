@@ -1,0 +1,17 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="UE-P-3" type="JUnit" factoryName="JUnit">
+    <module name="MicroJava" />
+    <option name="MAIN_CLASS_NAME" value="" />
+    <option name="METHOD_NAME" value="" />
+    <option name="TEST_OBJECT" value="pattern" />
+    <option name="VM_PARAMETERS" value="-ea -Djava.system.class.loader=ssw.mj.TracingClassLoader" />
+    <patterns>
+      <pattern testClass="ssw.mj.test.ScannerTest" />
+      <pattern testClass="ssw.mj.test.ParserTest" />
+      <pattern testClass="ssw.mj.test.RecoverTest" />
+    </patterns>
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>
