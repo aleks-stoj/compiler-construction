@@ -378,10 +378,32 @@ public class Scanner {
   private void readCharConst(Token t) {
     t.kind = charConst;
     StringBuilder charBuilder = new StringBuilder();
-    nextCh();
     char prevChar = ch;
 
-    if(isLetter(ch) || isDigit(ch) || ch == '\\') {
+    while(true) { // TODO: fix this. think of useful quitting requirement
+      nextCh();
+      if(prevChar == '\'' && ch == '\'') { // Empty Character
+        error(t, Errors.Message.EMPTY_CHARCONST, ch);
+      }
+      if(prevChar == '\'' && (ch != 'n' || ch != 'r' || ch != '\'' || ch != '\\')) {
+        error(t, Errors.Message.UNDEFINED_ESCAPE, ch);
+      }
+      if((isLetter(prevChar) || isDigit(prevChar)) && ch != '\'') {
+        error(t, Errors.Message.MISSING_QUOTE, ch);
+      }
+
+      if((isLetter(ch) || isDigit(ch)) && ch == '\'') {
+        break;
+      }
+
+      charBuilder.append(ch);
+      prevChar = ch;
+    }
+
+    t.val = charBuilder.toString();
+    t.numVal = Integer.parseInt(t.val);
+
+    /*if(isLetter(ch) || isDigit(ch) || ch == '\\') {
       charBuilder.append(ch);
       nextCh();
       if((isLetter(prevChar) || isDigit(prevChar)) && ch == '\'') { // successful case
@@ -403,10 +425,11 @@ public class Scanner {
     }
     else {
       error(t, Errors.Message.INVALID_CHAR, ch);
-    }
+    } */
 
   }
 
+  // TODO: if (eof encountered) then error(EOF_BEFORE_COMMENT_CLOSE)
   private void skipComment(Token t) {
     int count = 1;
     nextCh(); // go to first char after opening comment (after *)
