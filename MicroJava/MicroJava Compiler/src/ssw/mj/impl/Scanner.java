@@ -120,6 +120,7 @@ public class Scanner {
       // character
       case '\'':
         readCharConst(t);
+        nextCh();
         break;
 
       // simple tokens
@@ -250,6 +251,7 @@ public class Scanner {
         nextCh();
         if(ch == '=') {
           t.kind = neq;
+          nextCh();
         }
         else {
           error(t, Errors.Message.INVALID_CHAR, ch); // no negation symbol
@@ -284,7 +286,7 @@ public class Scanner {
           t.kind = and;
         }
         else {
-          error(t, Errors.Message.INVALID_CHAR, ch); // no second and
+          error(t, Errors.Message.INVALID_CHAR, '&'); // no second and
         }
         break;
       // logical or
@@ -378,64 +380,75 @@ public class Scanner {
   private void readCharConst(Token t) {
     t.kind = charConst;
     StringBuilder charBuilder = new StringBuilder();
-    char prevChar = ch;
+    nextCh(); // char after opening '
 
-    while(true) { // TODO: fix this. think of useful quitting requirement
-      nextCh();
-      if(prevChar == '\'' && ch == '\'') { // Empty Character
-        error(t, Errors.Message.EMPTY_CHARCONST, ch);
-      }
-      if(prevChar == '\'' && (ch != 'n' || ch != 'r' || ch != '\'' || ch != '\\')) {
-        error(t, Errors.Message.UNDEFINED_ESCAPE, ch);
-      }
-      if((isLetter(prevChar) || isDigit(prevChar)) && ch != '\'') {
-        error(t, Errors.Message.MISSING_QUOTE, ch);
-      }
-
-      if((isLetter(ch) || isDigit(ch)) && ch == '\'') {
-        break;
-      }
-
-      charBuilder.append(ch);
-      prevChar = ch;
+    if(ch == '\'') {
+      error(t, Errors.Message.EMPTY_CHARCONST);
+      t.numVal = 0;
+    }
+    if(ch == LF || ch == 'r') {
+      error(t, Errors.Message.ILLEGAL_LINE_END);
+      t.numVal = 0;
+      t.val = String.valueOf((char) t.numVal); // TODO: find a way to fix this without have to manually return and set t.val beforehand
+      return;
+    }
+    if(ch == EOF) {
+      error(t, Errors.Message.EOF_IN_CHAR);
+      t.numVal = 0;
     }
 
-    t.val = charBuilder.toString();
-    t.numVal = Integer.parseInt(t.val);
-
-    /*if(isLetter(ch) || isDigit(ch) || ch == '\\') {
+    if(ch == '\\') {
       charBuilder.append(ch);
       nextCh();
-      if((isLetter(prevChar) || isDigit(prevChar)) && ch == '\'') { // successful case
-        t.val = charBuilder.toString();
-        t.numVal = Integer.parseInt(charBuilder.toString());
-      }
-      else if(prevChar == '\\' && (ch == 'r' || ch == 'n' || ch == '\'' || ch == '\\')) {
+      if(ch == 'n' || ch == 'r' || ch == '\'' || ch == '\\') {
         charBuilder.append(ch);
-        prevChar = ch;
+        switch (ch) {
+          case 'n': t.numVal = '\n'; break;
+          case 'r': t.numVal = '\r'; break;
+          case '\\': t.numVal = '\\'; break;
+          case '\'': t.numVal = '\''; break;
+        }
+        nextCh();
+        /*if(ch == '\'') {
+          t.numVal = charBuilder.toString().charAt(0);
+        }
+        else {
+          error(t, Errors.Message.MISSING_QUOTE);
+        } */
+      }
+      else {
+        error(t, Errors.Message.UNDEFINED_ESCAPE, ch);
         nextCh();
         if(ch != '\'') {
           error(t, Errors.Message.MISSING_QUOTE);
         }
+        t.numVal = 0;
       }
-
-    }
-    else if(ch == '\'') {
-      error(t, Errors.Message.EMPTY_CHARCONST, ch);
     }
     else {
-      error(t, Errors.Message.INVALID_CHAR, ch);
-    } */
-
+      charBuilder.append(ch);
+      nextCh();
+      if(ch != '\'') {
+        error(t, Errors.Message.MISSING_QUOTE);
+        t.numVal = 0;
+      }
+      else {
+        t.numVal = charBuilder.toString().charAt(0);
+      }
+    }
+    t.val = String.valueOf((char) t.numVal);
   }
 
-  // TODO: if (eof encountered) then error(EOF_BEFORE_COMMENT_CLOSE)
   private void skipComment(Token t) {
     int count = 1;
     nextCh(); // go to first char after opening comment (after *)
     char prev = ch;
-    while(count >= 1) {
+    while(count != 0) {
       nextCh();
+      if(ch == EOF) {
+        error(t, Errors.Message.EOF_IN_COMMENT);
+        return;
+      }
       if(ch == '*' && prev == '/') { // increase count if "/*" found
         count++;
       }
