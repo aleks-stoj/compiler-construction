@@ -475,12 +475,12 @@ public class Scanner {
       }
       if(ch == '*' && prev == '/') { // increase count if "/*" found
         count++;
-        ch = 0;
+        ch = 0; // to prevent from */ being read, thus effectively nullifying count++;
         //prev = ch;
         //nextCh();
       }
       else if(ch == '/' && prev == '*') { // decrease count if "*/" found
-        count--;
+        count--; // to prevent from /* being read, thus effectively nullifying count++;
         ch = 0;
         //recentlyClosed = true;
         //prev = ch;
