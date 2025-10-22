@@ -120,7 +120,6 @@ public class Scanner {
       // character
       case '\'':
         readCharConst(t);
-        //nextCh();
         break;
 
       // simple tokens
@@ -158,7 +157,7 @@ public class Scanner {
         break;
       case '}':
         t.kind = rbrace;
-        nextCh(); //TODO: this is the reason why rbrace gets skipped
+        nextCh();
         break;
       case '~':
         t.kind = tilde;
@@ -174,12 +173,11 @@ public class Scanner {
         nextCh();
         if(ch == '=') {
           t.kind = eql;
-          //nextCh(); // TODO: is nextCh() just required here or should be executed regardless if this is assign or eql
         }
         else {
           t.kind = assign;
         }
-        nextCh(); // TODO: is this required for both cases or just eql? Does this also apply to all following compounds?
+        nextCh();
         break;
       // plus
       case '+':
@@ -195,7 +193,6 @@ public class Scanner {
         else {
           t.kind = plus;
         }
-        //nextCh();
         break;
       // minus
       case '-':
@@ -211,7 +208,6 @@ public class Scanner {
         else {
           t.kind = minus;
         }
-        //nextCh();
         break;
       // times
       case '*':
@@ -223,7 +219,6 @@ public class Scanner {
         else {
           t.kind = times;
         }
-        //nextCh();
         break;
       // divide/comment
       case '/':
@@ -239,7 +234,6 @@ public class Scanner {
         else {
           t.kind = slash;
         }
-        //nextCh();
         break;
       // remainder/modulo
       case '%':
@@ -251,7 +245,6 @@ public class Scanner {
         else {
           t.kind = rem;
         }
-        //nextCh();
         break;
       // negation
       case '!':
@@ -274,7 +267,6 @@ public class Scanner {
         else {
           t.kind = lss;
         }
-        //nextCh();
         break;
       // greater (equals)
       case '>':
@@ -286,7 +278,6 @@ public class Scanner {
         else {
           t.kind = gtr;
         }
-        //nextCh();
         break;
       // logical and
       case '&':
@@ -355,7 +346,6 @@ public class Scanner {
       nextCh(); // read next character
     }
     t.val = nameBuilder.toString(); // save value
-    //nextCh(); // go to next character after identifier/keyword
   }
 
   private void readNumber(Token t) {
@@ -366,10 +356,6 @@ public class Scanner {
 
     // Parse to Double in order to parse > MAX INT
     while(isDigit(ch)) {
-      /*if(Integer.parseInt(numberBuilder.toString()) > Integer.MAX_VALUE) { // TODO: throw error if number exceeds integer maximum. probably no need to consider negative numbers as those in microjava are just minus + number
-        error(t, Errors.Message.BIG_NUM, ch);
-        break;
-      } */
       numberBuilder.append(ch);
       nextCh();
     }
@@ -382,13 +368,8 @@ public class Scanner {
     catch (NumberFormatException e) {
        error(t, Errors.Message.BIG_NUM, t.val);
     }
-
-    //t.val = numberBuilder.toString();
-    //t.numVal = Integer.parseInt(numberBuilder.toString());
-    //nextCh(); // go to next char after number
   }
 
-  // TODO: find a way to make this functional, look good and consider all errors
   private void readCharConst(Token t) {
     t.kind = charConst;
     StringBuilder charBuilder = new StringBuilder();
@@ -428,12 +409,6 @@ public class Scanner {
           t.val = String.valueOf((char) t.numVal);
           return;
         }
-        /*if(ch == '\'') {
-          t.numVal = charBuilder.toString().charAt(0);
-        }
-        else {
-          error(t, Errors.Message.MISSING_QUOTE);
-        } */
       }
       else {
         error(t, Errors.Message.UNDEFINED_ESCAPE, ch);
@@ -465,7 +440,6 @@ public class Scanner {
     int count = 1;
     nextCh(); // go to first char after opening comment (after *)
     char prev = ch;
-    //boolean recentlyClosed = false; // keeps track if a comment has been recently closed with */. Prevents counting up with */*
 
     while(count != 0) {
       nextCh();
@@ -476,19 +450,11 @@ public class Scanner {
       if(ch == '*' && prev == '/') { // increase count if "/*" found
         count++;
         ch = 0; // to prevent from */ being read, thus effectively nullifying count++;
-        //prev = ch;
-        //nextCh();
       }
       else if(ch == '/' && prev == '*') { // decrease count if "*/" found
         count--; // to prevent from /* being read, thus effectively nullifying count++;
         ch = 0;
-        //recentlyClosed = true;
-        //prev = ch;
-        //nextCh();
       }
-      /*else {
-        recentlyClosed = false;
-      } */
       prev = ch;
     }
     nextCh();
