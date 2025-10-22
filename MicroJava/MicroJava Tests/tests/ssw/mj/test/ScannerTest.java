@@ -1,6 +1,7 @@
 package ssw.mj.test;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import ssw.mj.test.support.BaseCompilerTestCase;
 
 import static ssw.mj.Errors.Message.*;
@@ -655,6 +656,7 @@ public class ScannerTest extends BaseCompilerTestCase {
   }
 
   @Test
+  @Timeout(60)
   public void nestedSingleLineComment() {
     initScannerCode(" {/* This / is * a /* nested  /* single line */ comment. */*/} ");
 
@@ -692,6 +694,7 @@ public class ScannerTest extends BaseCompilerTestCase {
   }
 
   @Test
+  @Timeout(50)
   public void commentAtEnd1() {
     initScannerCode(" {/* This / is * a /* nested  /* single line */ comment. */*/ ");
 

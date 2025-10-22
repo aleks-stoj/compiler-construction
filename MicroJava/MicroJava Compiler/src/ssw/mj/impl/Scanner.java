@@ -120,7 +120,7 @@ public class Scanner {
       // character
       case '\'':
         readCharConst(t);
-        nextCh();
+        //nextCh();
         break;
 
       // simple tokens
@@ -158,7 +158,7 @@ public class Scanner {
         break;
       case '}':
         t.kind = rbrace;
-        nextCh();
+        nextCh(); //TODO: this is the reason why rbrace gets skipped
         break;
       case '~':
         t.kind = tilde;
@@ -186,9 +186,11 @@ public class Scanner {
         nextCh();
         if(ch == '+') {
           t.kind = pplus;
+          nextCh();
         }
         else if(ch == '=') {
           t.kind = plusas;
+          nextCh();
         }
         else {
           t.kind = plus;
@@ -200,9 +202,11 @@ public class Scanner {
         nextCh();
         if(ch == '-') {
           t.kind = mminus;
+          nextCh();
         }
         else if(ch == '=') {
           t.kind = minusas;
+          nextCh();
         }
         else {
           t.kind = minus;
@@ -214,6 +218,7 @@ public class Scanner {
         nextCh();
         if(ch == '=') {
           t.kind = timesas;
+          nextCh();
         }
         else {
           t.kind = times;
@@ -224,7 +229,8 @@ public class Scanner {
       case '/':
         nextCh();
         if(ch == '=') {
-          t.kind = slash;
+          t.kind = slashas;
+          nextCh();
         }
         else if(ch == '*') {
           skipComment(t);
@@ -240,6 +246,7 @@ public class Scanner {
         nextCh();
         if(ch == '=') {
           t.kind = remas;
+          nextCh();
         }
         else {
           t.kind = rem;
@@ -254,7 +261,7 @@ public class Scanner {
           nextCh();
         }
         else {
-          error(t, Errors.Message.INVALID_CHAR, ch); // no negation symbol
+          error(t, Errors.Message.INVALID_CHAR, '!'); // no negation symbol
         }
         break;
       // less (equals)
@@ -262,6 +269,7 @@ public class Scanner {
         nextCh();
         if(ch == '=') {
           t.kind = leq;
+          nextCh();
         }
         else {
           t.kind = lss;
@@ -273,6 +281,7 @@ public class Scanner {
         nextCh();
         if(ch == '=') {
           t.kind = geq;
+          nextCh();
         }
         else {
           t.kind = gtr;
@@ -284,6 +293,7 @@ public class Scanner {
         nextCh();
         if(ch == '&') {
           t.kind = and;
+          nextCh();
         }
         else {
           error(t, Errors.Message.INVALID_CHAR, '&'); // no second and
@@ -294,12 +304,14 @@ public class Scanner {
         nextCh();
         if(ch == '|') {
           t.kind = or;
+          nextCh();
         }
         else {
-          error(t, Errors.Message.INVALID_CHAR, ch); // no second or
+          error(t, Errors.Message.INVALID_CHAR, '|'); // no second or
         }
         break;
       default:
+        error(t, Errors.Message.INVALID_CHAR, ch);
         nextCh();
         t.kind = none;
         break;
@@ -386,15 +398,17 @@ public class Scanner {
       error(t, Errors.Message.EMPTY_CHARCONST);
       t.numVal = 0;
     }
-    if(ch == LF || ch == 'r') {
+    if(ch == LF || ch == '\r') {
       error(t, Errors.Message.ILLEGAL_LINE_END);
       t.numVal = 0;
-      t.val = String.valueOf((char) t.numVal); // TODO: find a way to fix this without have to manually return and set t.val beforehand
+      t.val = String.valueOf((char) t.numVal);
       return;
     }
     if(ch == EOF) {
       error(t, Errors.Message.EOF_IN_CHAR);
       t.numVal = 0;
+      t.val = String.valueOf((char) t.numVal);
+      return;
     }
 
     if(ch == '\\') {
@@ -409,6 +423,11 @@ public class Scanner {
           case '\'': t.numVal = '\''; break;
         }
         nextCh();
+        if(ch != '\'') {
+          error(t, Errors.Message.MISSING_QUOTE);
+          t.val = String.valueOf((char) t.numVal);
+          return;
+        }
         /*if(ch == '\'') {
           t.numVal = charBuilder.toString().charAt(0);
         }
@@ -425,24 +444,29 @@ public class Scanner {
         t.numVal = 0;
       }
     }
-    else {
+    else if(ch != '\'') { // normal char read
       charBuilder.append(ch);
       nextCh();
       if(ch != '\'') {
         error(t, Errors.Message.MISSING_QUOTE);
         t.numVal = 0;
+        t.val = String.valueOf((char) t.numVal);
+        return;
       }
       else {
         t.numVal = charBuilder.toString().charAt(0);
       }
     }
     t.val = String.valueOf((char) t.numVal);
+    nextCh();
   }
 
   private void skipComment(Token t) {
     int count = 1;
     nextCh(); // go to first char after opening comment (after *)
     char prev = ch;
+    //boolean recentlyClosed = false; // keeps track if a comment has been recently closed with */. Prevents counting up with */*
+
     while(count != 0) {
       nextCh();
       if(ch == EOF) {
@@ -451,13 +475,21 @@ public class Scanner {
       }
       if(ch == '*' && prev == '/') { // increase count if "/*" found
         count++;
+        ch = 0;
+        //prev = ch;
+        //nextCh();
       }
       else if(ch == '/' && prev == '*') { // decrease count if "*/" found
         count--;
+        ch = 0;
+        //recentlyClosed = true;
+        //prev = ch;
+        //nextCh();
       }
-      else { // anything else found, continue
-        prev = ch;
-      }
+      /*else {
+        recentlyClosed = false;
+      } */
+      prev = ch;
     }
     nextCh();
   }

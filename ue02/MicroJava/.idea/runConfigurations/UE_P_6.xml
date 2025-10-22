@@ -1,0 +1,13 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="UE-P-6" type="JUnit" factoryName="JUnit">
+    <module name="MicroJava" />
+    <option name="MAIN_CLASS_NAME" value="" />
+    <option name="METHOD_NAME" value="" />
+    <option name="TEST_OBJECT" value="directory" />
+    <option name="VM_PARAMETERS" value="-ea -Djava.system.class.loader=ssw.mj.TracingClassLoader" />
+    <dir value="$PROJECT_DIR$/MicroJava Tests/tests" />
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>

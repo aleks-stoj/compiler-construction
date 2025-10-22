@@ -1,0 +1,19 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="UE-P-1" type="JUnit" factoryName="JUnit">
+    <module name="MicroJava" />
+    <extension name="coverage">
+      <pattern>
+        <option name="PATTERN" value="ssw.mj.*" />
+        <option name="ENABLED" value="true" />
+      </pattern>
+    </extension>
+    <option name="PACKAGE_NAME" value="ssw.mj.test" />
+    <option name="MAIN_CLASS_NAME" value="ssw.mj.test.ScannerTest" />
+    <option name="METHOD_NAME" value="" />
+    <option name="TEST_OBJECT" value="class" />
+    <option name="VM_PARAMETERS" value="-ea -Djava.system.class.loader=ssw.mj.TracingClassLoader" />
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>
