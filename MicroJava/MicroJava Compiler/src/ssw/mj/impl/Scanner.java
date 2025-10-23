@@ -77,20 +77,19 @@ public class Scanner {
 
   static {
     keywords = new HashMap<>();
-    keywords.put("", none);
-    keywords.put("break", break_);
-    keywords.put("class", class_);
-    keywords.put("if", if_);
-    keywords.put("else", else_);
-    keywords.put("new", new_);
-    keywords.put("final", final_);
-    keywords.put("program", program);
-    keywords.put("print", print);
-    keywords.put("read", read);
-    keywords.put("return", return_);
-    keywords.put("void", void_);
-    keywords.put("while", while_);
-    keywords.put("eof", eof);
+    keywords.put(break_.label(), break_);
+    keywords.put(class_.label(), class_);
+    keywords.put(if_.label(), if_);
+    keywords.put(else_.label(), else_);
+    keywords.put(new_.label(), new_);
+    keywords.put(final_.label(), final_);
+    keywords.put(program.label(), program);
+    keywords.put(print.label(), print);
+    keywords.put(read.label(), read);
+    keywords.put(return_.label(), return_);
+    keywords.put(void_.label(), void_);
+    keywords.put(while_.label(), while_);
+    keywords.put(eof.label(), eof);
   }
 
   /**
@@ -108,7 +107,6 @@ public class Scanner {
       // identifier or keyword
       case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g': case 'h': case 'i': case 'j': case 'k': case 'l': case 'm': case 'n': case 'o': case 'p': case 'q': case 'r': case 's': case 't': case 'u': case 'v': case 'w': case 'x': case 'y': case 'z':
       case 'A': case 'B': case 'C': case 'D': case 'E': case 'F': case 'G': case 'H': case 'I': case 'J': case 'K': case 'L': case 'M': case 'N': case 'O': case 'P': case 'Q': case 'R': case 'S': case 'T': case 'U': case 'V': case 'W': case 'X': case 'Y': case 'Z':
-      case '_':
         readName(t);
         break;
 
