@@ -102,7 +102,6 @@ public class Scanner {
     }
 
     Token t = new Token(none, line, col);
-    // TODO: add behaviour for simple character '' and its error handling
     switch(ch) {
       // identifier or keyword
       case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g': case 'h': case 'i': case 'j': case 'k': case 'l': case 'm': case 'n': case 'o': case 'p': case 'q': case 'r': case 's': case 't': case 'u': case 'v': case 'w': case 'x': case 'y': case 'z':
@@ -360,7 +359,7 @@ public class Scanner {
 
     t.val = numberBuilder.toString();
 
-    try { // catch numberformatexception and execute error(BIG_NUM) instead. This is inelegant, however I don't know how else to efficiently solve it within the loop without causing a NumberFormatException
+    try { // catch numberformatexception and execute error(BIG_NUM) instead.
       t.numVal = Integer.parseInt(numberBuilder.toString());
     }
     catch (NumberFormatException e) {
