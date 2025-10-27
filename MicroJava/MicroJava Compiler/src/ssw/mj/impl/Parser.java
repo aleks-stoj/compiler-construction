@@ -1,7 +1,5 @@
 package ssw.mj.impl;
 
-import javassist.expr.Expr;
-import javassist.expr.FieldAccess;
 import ssw.mj.Errors;
 import ssw.mj.Errors.Message;
 import ssw.mj.scanner.Token;
@@ -117,13 +115,26 @@ public final class Parser {
   // TODO Exercise UE-P-3: Error distance
 
   // TODO Exercise UE-P-2 + Exercise 3: Sets to handle certain first, follow, and recover sets
-  private final EnumSet<Token.Kind> firstProgram = EnumSet.of(final_, ident, class_);
-  private final EnumSet<Token.Kind> firstMethodDecl = EnumSet.of(ident, void_);
-  private final EnumSet<Token.Kind> firstType = EnumSet.of(ident, lbrack, rbrack);
+  private static final EnumSet<Token.Kind> firstDecl; // combination of First(ConstDecl), First(VarDecl) and First(ClassDecl). Decided to combine them into one, as it isn't worth it to write them in separate sets.
+  private static final EnumSet<Token.Kind> firstMethodDecl;
+  private static final EnumSet<Token.Kind> firstAssignOp;
+  private static final EnumSet<Token.Kind> firstAddOp;
+  private static final EnumSet<Token.Kind> firstMulOp;
+  private static final EnumSet<Token.Kind> firstStatement;
+  private static final EnumSet<Token.Kind> firstFactor;
+  private static final EnumSet<Token.Kind> firstExpr;
 
 
   static {
     // Initialize first and follow sets.
+    firstDecl = EnumSet.of(final_, ident, class_);
+    firstMethodDecl = EnumSet.of(ident, void_);
+    firstAssignOp = EnumSet.of(assign, plusas, minusas, timesas, slashas, remas);
+    firstAddOp = EnumSet.of(plus, minus);
+    firstMulOp = EnumSet.of(times, slash, rem);
+    firstStatement = EnumSet.of(ident, if_, while_, break_, return_, read, print, lbrace, semicolon);
+    firstFactor = EnumSet.of(ident, number, charConst, new_, lpar);
+    firstExpr = EnumSet.of(ident, number, charConst, new_, lpar, minus);
   }
 
   // ---------------------------------
@@ -139,11 +150,9 @@ public final class Parser {
   private void Program() {
     // TODO Exercise UE-P-2
     check(program);
-    scan();
     check(ident);
-    scan();
 
-    while(firstProgram.contains(sym)) {
+    while(firstDecl.contains(sym)) {
       if(sym == final_) {
         ConstDecl();
       }
@@ -156,14 +165,12 @@ public final class Parser {
     }
 
     check(lbrace);
-    scan();
 
     while(firstMethodDecl.contains(sym)) {
       MethodDecl();
     }
 
     check(rbrace);
-    scan();
   }
 
   /**
@@ -171,10 +178,8 @@ public final class Parser {
    */
   private void ConstDecl() {
     check(final_);
-    scan();
     Type();
     check(ident);
-    scan();
     check(assign);
 
     if(sym == number) {
@@ -188,7 +193,6 @@ public final class Parser {
     }
 
     check(semicolon);
-    scan();
   }
 
   /**
@@ -197,16 +201,13 @@ public final class Parser {
   private void VarDecl() {
     Type();
     check(ident);
-    scan();
 
     while(sym == comma) {
       scan();
       check(ident);
-      scan();
     }
 
     check(semicolon);
-    scan();
   }
 
   /**
@@ -214,21 +215,18 @@ public final class Parser {
    */
   private void ClassDecl() {
     check(class_);
-    scan();
     check(ident);
-    scan();
     check(lbrace);
 
-    while(firstType.contains(sym)) {
+    while(sym == ident) {
       VarDecl();
     }
 
     check(rbrace);
-    scan();
   }
 
   private void MethodDecl() {
-    if(firstType.contains(sym)) {
+    if(sym == ident) {
       Type();
     }
     else if(sym == void_) {
@@ -239,17 +237,15 @@ public final class Parser {
     }
 
     check(ident);
-    scan();
-
     check(lpar);
 
-    if(firstType.contains(sym)) {
+    if(sym == ident) {
       FormPars();
     }
 
     check(rpar);
 
-    while(firstType.contains(sym)) {
+    while(sym == ident) {
       VarDecl();
     }
 
@@ -262,12 +258,11 @@ public final class Parser {
   private void FormPars() {
     Type();
     check(ident);
-    scan();
+
     while(sym == comma) {
       scan();
       Type();
       check(ident);
-      scan();
     }
   }
 
@@ -276,12 +271,11 @@ public final class Parser {
    */
   private void Type() {
     check(ident);
-    scan(); // checks at the very least that sym is ident
-    if(sym == lbrack) { // next token is lbrack
+    if(sym == lbrack) {
       scan();
-      if (sym == rbrack) { // closing rbrack
-        scan(); // successful
-      } else { // no closing rbrack --> error
+      if (sym == rbrack) {
+        scan();
+      } else {
         error(TOKEN_EXPECTED, rbrack);
       }
     }
@@ -292,23 +286,22 @@ public final class Parser {
    */
   private void Block() {
     check(lbrace);
-    scan();
 
     while(firstStatement.contains(sym)) {
       Statement();
     }
 
     check(rbrace);
-    scan();
   }
 
   private void Statement() {
-    if(firstDesignator.contains(sym)) {
+    if(sym == ident) { // TODO: first(Designator)
       Designator();
       if(firstAssignOp.contains(sym)) {
+        AssignOp();
         Expr();
       }
-      else if(firstActPars.contains(sym)) {
+      else if(sym == lpar) {
         ActPars();
       }
       else if(sym == pplus) {
@@ -317,13 +310,14 @@ public final class Parser {
       else if(sym == mminus) {
         scan();
       }
+      else {
+        error(INVALID_DESIGNATOR_STATEMENT);
+      }
       check(semicolon);
-      scan();
     }
     else if(sym == if_) {
       scan();
       check(lpar);
-      scan();
       Condition();
       check(rpar);
       Statement();
@@ -335,16 +329,13 @@ public final class Parser {
     else if(sym == while_) {
       scan();
       check(lpar);
-      scan();
       Condition();
       check(rpar);
-      scan();
       Statement();
     }
     else if(sym == break_) {
       scan();
       check(semicolon);
-      scan();
     }
     else if(sym == return_) {
       scan();
@@ -352,34 +343,26 @@ public final class Parser {
         Expr();
       }
       check(semicolon);
-      scan();
     }
     else if(sym == read) {
       scan();
       check(lpar);
-      scan();
       Designator();
       check(rpar);
-      scan();
       check(semicolon);
-      scan();
     }
     else if(sym == print) {
       scan();
       check(lpar);
-      scan();
       Expr();
       if(sym == comma) {
         scan();
         check(number);
-        scan();
       }
       check(rpar);
-      scan();
       check(semicolon);
-      scan();
     }
-    else if(firstBlock.contains(sym)) {
+    else if(sym == lbrace) {
       Block();
     }
     else if(sym == semicolon) {
@@ -400,12 +383,10 @@ public final class Parser {
       case remas: scan(); break;
       default: error(INVALID_ASSIGN_OP);
     }
-    scan();
   }
 
   private void ActPars() {
     check(lpar);
-    scan();
 
     if(firstExpr.contains(sym)) {
       Expr();
@@ -416,7 +397,6 @@ public final class Parser {
     }
 
     check(rpar);
-    scan();
   }
 
   private void Condition() {
@@ -453,7 +433,6 @@ public final class Parser {
       case leq: scan(); break;
       default: error(INVALID_REL_OP);
     }
-    scan();
   }
 
   private void Expr() {
@@ -478,9 +457,9 @@ public final class Parser {
   }
 
   private void Factor() {
-    if(firstDesignator.contains(sym)) {
+    if(sym == ident) { // TODO: firstDesignator
       Designator();
-      if(firstActPars.contains(sym)) {
+      if(sym == lpar) {
         ActPars();
       }
     }
@@ -493,19 +472,16 @@ public final class Parser {
     else if(sym == new_) {
       scan();
       check(ident);
-      scan();
       if(sym == lbrack) {
         scan();
         Expr();
         check(rbrack);
-        scan();
       }
     }
     else if(sym == lpar) {
       scan();
       Expr();
       check(rpar);
-      scan();
     }
     else {
       error(INVALID_FACTOR);
@@ -517,7 +493,6 @@ public final class Parser {
    */
   private void Designator() {
     check(ident);
-    scan();
     while(sym == period || sym == lbrack) {
       if(sym == lbrack) {
         scan();
@@ -525,15 +500,13 @@ public final class Parser {
           scan();
         }
         Expr();
-        scan();
-        // check for "]"
+        check(rbrack);
       }
       else { // "." is read
-        scan(); // read next token
-        check(ident); // check next token is identifier
+        scan();
+        check(ident);
       }
     }
-    scan(); // read next token
   }
 
   private void AddOp() {
@@ -542,7 +515,6 @@ public final class Parser {
       case minus: scan(); break;
       default: error(INVALID_ADD_OP);
     }
-    scan();
   }
 
   private void MulOp() {
@@ -552,7 +524,6 @@ public final class Parser {
       case rem: scan(); break;
       default: error(INVALID_MUL_OP);
     }
-    scan();
   }
 
   // ...
