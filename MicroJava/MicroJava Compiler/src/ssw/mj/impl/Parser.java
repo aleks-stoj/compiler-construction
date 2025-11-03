@@ -273,11 +273,7 @@ public final class Parser {
     check(ident);
     if(sym == lbrack) {
       scan();
-      if (sym == rbrack) {
-        scan();
-      } else {
-        error(TOKEN_EXPECTED, rbrack);
-      }
+      check(rbrack);
     }
   }
 
@@ -295,7 +291,7 @@ public final class Parser {
   }
 
   private void Statement() {
-    if(sym == ident) { // TODO: first(Designator)
+    if(sym == ident) {
       Designator();
       if(firstAssignOp.contains(sym)) {
         AssignOp();
@@ -457,7 +453,7 @@ public final class Parser {
   }
 
   private void Factor() {
-    if(sym == ident) { // TODO: firstDesignator
+    if(sym == ident) {
       Designator();
       if(sym == lpar) {
         ActPars();
