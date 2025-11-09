@@ -4,6 +4,7 @@ import ssw.mj.Errors;
 import ssw.mj.Errors.Message;
 import ssw.mj.scanner.Token;
 
+import javax.swing.plaf.nimbus.State;
 import java.util.EnumSet;
 
 import static ssw.mj.Errors.Message.*;
@@ -72,6 +73,7 @@ public final class Parser {
     t = la;
     la = scanner.next();
     sym = la.kind;
+    errorDist++;
   }
 
   /**
@@ -91,8 +93,10 @@ public final class Parser {
   public void error(Message msg, Object... msgParams) {
     // TODO Exercise UE-P-3: Replace panic mode with error recovery (i.e., keep track of error distance)
     // TODO Exercise UE-P-3: Hint: Replacing panic mode also affects scan() method
-    scanner.errors.error(la.line, la.col, msg, msgParams);
-    throw new Errors.PanicMode();
+    if(errorDist >= MIN_ERROR_DIST) {
+      scanner.errors.error(la.line, la.col, msg, msgParams);
+    }
+    errorDist = 0;
   }
 
   /**
@@ -113,6 +117,8 @@ public final class Parser {
   // ===============================================
 
   // TODO Exercise UE-P-3: Error distance
+  private int errorDist = MIN_ERROR_DIST;
+  private static final int MIN_ERROR_DIST = 3;
 
   // TODO Exercise UE-P-2 + Exercise 3: Sets to handle certain first, follow, and recover sets
   private static final EnumSet<Token.Kind> firstDecl; // combination of First(ConstDecl), First(VarDecl) and First(ClassDecl). Decided to combine them into one, as it isn't worth it to write them in separate sets.
@@ -121,7 +127,6 @@ public final class Parser {
   private static final EnumSet<Token.Kind> firstAddOp;
   private static final EnumSet<Token.Kind> firstMulOp;
   private static final EnumSet<Token.Kind> firstStatement;
-  private static final EnumSet<Token.Kind> firstFactor;
   private static final EnumSet<Token.Kind> firstExpr;
   private static final EnumSet<Token.Kind> recoverDecl;
   private static final EnumSet<Token.Kind> recoverMethodDecl;
@@ -136,7 +141,6 @@ public final class Parser {
     firstAddOp = EnumSet.of(plus, minus);
     firstMulOp = EnumSet.of(times, slash, rem);
     firstStatement = EnumSet.of(ident, if_, while_, break_, return_, read, print, lbrace, semicolon);
-    firstFactor = EnumSet.of(ident, number, charConst, new_, lpar);
     firstExpr = EnumSet.of(ident, number, charConst, new_, lpar, minus);
     recoverDecl = EnumSet.of(final_, ident, class_, eof);
     recoverMethodDecl = EnumSet.of(ident, void_, eof);
@@ -158,24 +162,37 @@ public final class Parser {
     check(program);
     check(ident);
 
-    while(firstDecl.contains(sym)) {
+    while(true) {
       if(sym == final_) {
         ConstDecl();
       }
       else if(sym == ident) {
         VarDecl();
       }
-      else {
+      else if(sym == class_) {
         ClassDecl();
+      }
+      else if(sym == lbrace || sym == eof) {
+        break;
+      }
+      else {
+        recoverDecl();
       }
     }
 
     check(lbrace);
 
-    while(firstMethodDecl.contains(sym)) {
-      MethodDecl();
+    while(true) {
+      if(firstMethodDecl.contains(sym)) {
+        MethodDecl();
+      }
+      else if(sym == rbrace || sym == eof) {
+        break;
+      }
+      else {
+        recoverMethodDecl();
+      }
     }
-
     check(rbrace);
   }
 
@@ -289,8 +306,16 @@ public final class Parser {
   private void Block() {
     check(lbrace);
 
-    while(firstStatement.contains(sym)) {
-      Statement();
+    while(true) {
+      if(firstStatement.contains(sym)) {
+        Statement();
+      }
+      else if(sym == rbrace || sym == eof) {
+        break;
+      }
+      else {
+        recoverStat();
+      }
     }
 
     check(rbrace);
@@ -538,18 +563,21 @@ public final class Parser {
     do {
       scan();
     } while(!recoverDecl.contains(sym));
+    errorDist = 0;
   }
   private void recoverMethodDecl() {
     error(METHOD_DECL_RECOVERY);
     do {
       scan();
     } while(!recoverMethodDecl.contains(sym));
+    errorDist = 0;
   }
   private void recoverStat() {
     error(STATEMENT_RECOVERY);
     do {
       scan();
     } while(!recoverStatement.contains(sym));
+    errorDist = 0;
   }
 
   // ====================================
