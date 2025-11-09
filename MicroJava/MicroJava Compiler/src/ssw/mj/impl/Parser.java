@@ -123,6 +123,9 @@ public final class Parser {
   private static final EnumSet<Token.Kind> firstStatement;
   private static final EnumSet<Token.Kind> firstFactor;
   private static final EnumSet<Token.Kind> firstExpr;
+  private static final EnumSet<Token.Kind> recoverDecl;
+  private static final EnumSet<Token.Kind> recoverMethodDecl;
+  private static final EnumSet<Token.Kind> recoverStatement;
 
 
   static {
@@ -135,6 +138,9 @@ public final class Parser {
     firstStatement = EnumSet.of(ident, if_, while_, break_, return_, read, print, lbrace, semicolon);
     firstFactor = EnumSet.of(ident, number, charConst, new_, lpar);
     firstExpr = EnumSet.of(ident, number, charConst, new_, lpar, minus);
+    recoverDecl = EnumSet.of(final_, ident, class_, eof);
+    recoverMethodDecl = EnumSet.of(ident, void_, eof);
+    recoverStatement = EnumSet.of(if_, while_, break_, return_, read, print, semicolon, eof); // TODO: possible other recover symbols: rbrace, else
   }
 
   // ---------------------------------
@@ -527,6 +533,24 @@ public final class Parser {
   // ------------------------------------
 
   // TODO Exercise UE-P-3: Error recovery methods: recoverDecl, recoverMethodDecl and recoverStat (+ TODO Exercise UE-P-5: Check idents for Type kind)
+  private void recoverDecl() {
+    error(DECLARATION_RECOVERY);
+    do {
+      scan();
+    } while(!recoverDecl.contains(sym));
+  }
+  private void recoverMethodDecl() {
+    error(METHOD_DECL_RECOVERY);
+    do {
+      scan();
+    } while(!recoverMethodDecl.contains(sym));
+  }
+  private void recoverStat() {
+    error(STATEMENT_RECOVERY);
+    do {
+      scan();
+    } while(!recoverStatement.contains(sym));
+  }
 
   // ====================================
   // ====================================
