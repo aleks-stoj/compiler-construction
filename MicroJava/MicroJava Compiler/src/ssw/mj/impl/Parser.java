@@ -1,10 +1,7 @@
 package ssw.mj.impl;
 
-import ssw.mj.Errors;
 import ssw.mj.Errors.Message;
 import ssw.mj.scanner.Token;
-
-import javax.swing.plaf.nimbus.State;
 import java.util.EnumSet;
 
 import static ssw.mj.Errors.Message.*;
@@ -128,6 +125,7 @@ public final class Parser {
   private static final EnumSet<Token.Kind> firstMulOp;
   private static final EnumSet<Token.Kind> firstStatement;
   private static final EnumSet<Token.Kind> firstExpr;
+  private static final EnumSet<Token.Kind> followStatement;
   private static final EnumSet<Token.Kind> recoverDecl;
   private static final EnumSet<Token.Kind> recoverMethodDecl;
   private static final EnumSet<Token.Kind> recoverStatement;
@@ -142,9 +140,10 @@ public final class Parser {
     firstMulOp = EnumSet.of(times, slash, rem);
     firstStatement = EnumSet.of(ident, if_, while_, break_, return_, read, print, lbrace, semicolon);
     firstExpr = EnumSet.of(ident, number, charConst, new_, lpar, minus);
+    followStatement = EnumSet.of(rbrace, else_, eof);
     recoverDecl = EnumSet.of(final_, ident, class_, eof);
     recoverMethodDecl = EnumSet.of(ident, void_, eof);
-    recoverStatement = EnumSet.of(if_, while_, break_, return_, read, print, semicolon, eof); // TODO: possible other recover symbols: rbrace, else
+    recoverStatement = EnumSet.of(if_, while_, break_, return_, read, print, semicolon, eof);
   }
 
   // ---------------------------------
@@ -310,7 +309,7 @@ public final class Parser {
       if(firstStatement.contains(sym)) {
         Statement();
       }
-      else if(sym == rbrace || sym == eof) {
+      else if(followStatement.contains(sym)) {
         break;
       }
       else {
