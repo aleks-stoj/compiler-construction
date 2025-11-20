@@ -51,8 +51,24 @@ public final class Tab {
     closeScope();
 
     // TODO Exercise UE-P-4: build "ord" universe method and store in ordObj
-
+    ordObj = insert(Obj.Kind.Meth, "ord", intType);
+    openScope();
+    Obj chVarObj = insert(Obj.Kind.Var, "ch", charType);
+    chVarObj.level = 1;
+    ordObj.nPars = curScope.nVars();
+    ordObj.locals = curScope.locals();
+    closeScope();
     // TODO Exercise UE-P-4: build "len" universe method and store in lenObj
+    lenObj = insert(Obj.Kind.Meth, "len", intType);
+    openScope();
+    // for generic array create a new array struct node with elemType noType
+    Struct arrStruct = new Struct(Struct.Kind.Arr);
+    arrStruct.elemType = new Struct(Struct.Kind.None);
+    Obj arrVarObj = insert(Obj.Kind.Var, "arr", arrStruct); // TODO: check if we need to do something else to make this an array
+    arrVarObj.level = 1;
+    lenObj.nPars = curScope.nVars();
+    lenObj.locals = curScope.locals();
+    closeScope();
 
     // still on level -1
     // now that the universe is constructed, the next node that will be added is the Program itself
@@ -75,7 +91,10 @@ public final class Tab {
 
   public Obj insert(Obj.Kind kind, String name, Struct type) {
     // TODO Exercise UE-P-4
-    return noObj;
+    // TODO: check return
+    Obj objNode = new Obj(kind, name, type);
+    curScope.insert(objNode);
+    return objNode;
   }
 
   /**
@@ -83,7 +102,7 @@ public final class Tab {
    */
   public Obj find(String name) {
     // TODO Exercise UE-P-4
-    return noObj;
+    return curScope.findGlobal(name);
   }
 
   /**
@@ -92,7 +111,7 @@ public final class Tab {
    */
   public Obj findField(String name, Struct type) {
     // TODO Exercise UE-P-4
-    return noObj;
+    return type.findField(name);
   }
 
   // ===============================================
