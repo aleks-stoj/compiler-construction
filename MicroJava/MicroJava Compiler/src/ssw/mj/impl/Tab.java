@@ -1,5 +1,6 @@
 package ssw.mj.impl;
 
+import ssw.mj.Errors;
 import ssw.mj.symtab.Obj;
 import ssw.mj.symtab.Scope;
 import ssw.mj.symtab.Struct;
@@ -61,10 +62,7 @@ public final class Tab {
     // TODO Exercise UE-P-4: build "len" universe method and store in lenObj
     lenObj = insert(Obj.Kind.Meth, "len", intType);
     openScope();
-    // for generic array create a new array struct node with elemType noType
-    Struct arrStruct = new Struct(Struct.Kind.Arr);
-    arrStruct.elemType = new Struct(Struct.Kind.None);
-    Obj arrVarObj = insert(Obj.Kind.Var, "arr", arrStruct); // TODO: check if we need to do something else to make this an array
+    Obj arrVarObj = insert(Obj.Kind.Var, "arr", new Struct(noType));
     arrVarObj.level = 1;
     lenObj.nPars = curScope.nVars();
     lenObj.locals = curScope.locals();
@@ -91,10 +89,20 @@ public final class Tab {
 
   public Obj insert(Obj.Kind kind, String name, Struct type) {
     // TODO Exercise UE-P-4
-    // TODO: check return
-    Obj objNode = new Obj(kind, name, type);
-    curScope.insert(objNode);
-    return objNode;
+    Obj obj = new Obj(kind, name, type);
+    Obj findObj = curScope.findLocal(name);
+
+    if(findObj != null) { // name already in symtab
+      parser.error(Errors.Message.DUPLICATE_NAME_IN_SCOPE, name);
+    }
+
+    if(obj.kind == Obj.Kind.Var) {
+      obj.level = curLevel;
+      obj.adr = curScope.nVars();
+    }
+
+    curScope.insert(obj);
+    return obj;
   }
 
   /**
@@ -102,7 +110,12 @@ public final class Tab {
    */
   public Obj find(String name) {
     // TODO Exercise UE-P-4
-    return curScope.findGlobal(name);
+    Obj findObj = curScope.findGlobal(name);
+    if(findObj == null) {
+      parser.error(Errors.Message.NAME_NOT_FOUND, name);
+      return noObj; // return noObj, as otherwise a NullPointerException would be thrown in Parser
+    }
+    return findObj;
   }
 
   /**
@@ -111,7 +124,12 @@ public final class Tab {
    */
   public Obj findField(String name, Struct type) {
     // TODO Exercise UE-P-4
-    return type.findField(name);
+    Obj fieldObj = type.findField(name);
+    if(fieldObj == null) {
+      parser.error(Errors.Message.FIELD_NOT_FOUND, name);
+      return noObj; // return noObj, as otherwise a NullPointerException would be thrown in Parser
+    }
+    return fieldObj;
   }
 
   // ===============================================

@@ -2,6 +2,9 @@ package ssw.mj.impl;
 
 import ssw.mj.Errors.Message;
 import ssw.mj.scanner.Token;
+import ssw.mj.symtab.Obj;
+import ssw.mj.symtab.Struct;
+
 import java.util.EnumSet;
 
 import static ssw.mj.Errors.Message.*;
@@ -161,6 +164,10 @@ public final class Parser {
     check(program);
     check(ident);
 
+    Obj progObj = tab.insert(Obj.Kind.Prog, t.val, Tab.noType);
+
+    tab.openScope();
+
     while(true) {
       if(sym == final_) {
         ConstDecl();
@@ -179,6 +186,12 @@ public final class Parser {
       }
     }
 
+    // number of variables in this scope exceeds limit
+    // at this position (before openScope()) as this is the global scope
+    if(tab.curScope.nVars() > MAX_GLOBALS) {
+      error(TOO_MANY_GLOBALS);
+    }
+
     check(lbrace);
 
     while(true) {
@@ -193,6 +206,9 @@ public final class Parser {
       }
     }
     check(rbrace);
+
+    progObj.locals = tab.curScope.locals(); // properly set program's local to the locals of the current scope before closing
+    tab.closeScope();
   }
 
   /**
@@ -200,19 +216,30 @@ public final class Parser {
    */
   private void ConstDecl() {
     check(final_);
-    Type();
+    Struct type = Type();
     check(ident);
+
+    Obj con = tab.insert(Obj.Kind.Con, t.val, type); // new constant in table
+
     check(assign);
 
     if(sym == number) {
+      if(type != Tab.intType) { // assignment is of type int, but const is not
+        error(INCOMPATIBLE_TYPES);
+      }
       scan();
     }
     else if(sym == charConst) {
+      if(type != Tab.charType) { // assignment is of type char, but const is not
+        error(INCOMPATIBLE_TYPES);
+      }
       scan();
     }
     else {
       error(INVALID_CONST_TYPE);
     }
+
+    con.val = t.numVal; // assign value to const
 
     check(semicolon);
   }
@@ -221,12 +248,15 @@ public final class Parser {
    * <code>VarDecl = Type ident { "," ident } ";".</code>
    */
   private void VarDecl() {
-    Type();
+    Struct type = Type();
     check(ident);
+
+    tab.insert(Obj.Kind.Var, t.val, type);
 
     while(sym == comma) {
       scan();
       check(ident);
+      tab.insert(Obj.Kind.Var, t.val, type);
     }
 
     check(semicolon);
@@ -238,18 +268,34 @@ public final class Parser {
   private void ClassDecl() {
     check(class_);
     check(ident);
+    Obj classObj = tab.insert(Obj.Kind.Type, t.val, new Struct(Struct.Kind.Class)); // insert program into symtab
     check(lbrace);
+
+    tab.openScope();
 
     while(sym == ident) {
       VarDecl();
     }
 
+    if(tab.curScope.nVars() > MAX_FIELDS) {
+      error(TOO_MANY_FIELDS);
+    }
+
+    classObj.type.fields = tab.curScope.locals(); // assign scope locals as class fields
+
     check(rbrace);
+
+    tab.closeScope();
   }
 
+  /**
+   * <code>( Type | "void" ) ident "(" [ FormPars ] ")"
+   * { VarDecl } Block.</code>
+   */
   private void MethodDecl() {
+    Struct type = Tab.noType; // assume that initial type is void
     if(sym == ident) {
-      Type();
+      type = Type();
     }
     else if(sym == void_) {
       scan();
@@ -259,44 +305,80 @@ public final class Parser {
     }
 
     check(ident);
+
+    String methName = t.val;
+    Obj methObj = tab.insert(Obj.Kind.Meth, methName, type); // add method to symtab
+    methObj.adr = code.pc;
+
+    tab.openScope();
+
     check(lpar);
 
     if(sym == ident) {
       FormPars();
     }
 
+    int methParams = tab.curScope.locals().size(); // get number of method parameters
+
     check(rpar);
+
+    if(methName.equals("main")) {
+      if(type != Tab.noType) { // main return type not void
+        error(MAIN_NOT_VOID);
+      }
+      if(methParams > 0) { // main has parameters
+        error(MAIN_WITH_PARAMS);
+      }
+    }
 
     while(sym == ident) {
       VarDecl();
     }
 
+    if(tab.curScope.locals().size() > MAX_LOCALS) {
+      error(TOO_MANY_LOCALS);
+    }
+
     Block();
+
+    methObj.nPars = methParams;
+    methObj.locals = tab.curScope.locals();
+    tab.closeScope();
   }
 
   /**
    * <code>FormPars = Type ident { "," Type ident }.</code>
    */
   private void FormPars() {
-    Type();
+    Struct type = Type();
     check(ident);
+
+    tab.insert(Obj.Kind.Var, t.val, type);
 
     while(sym == comma) {
       scan();
-      Type();
+      type = Type();
       check(ident);
+      tab.insert(Obj.Kind.Var, t.val, type);
     }
   }
 
   /**
    * <code>ident [ "[" "]" ].</code>
    */
-  private void Type() {
+  private Struct Type() {
     check(ident);
+    Obj o = tab.find(t.val);
+    if(o.kind != Obj.Kind.Type) {
+      error(TYPE_EXPECTED);
+    }
+    Struct type = o.type;
     if(sym == lbrack) {
       scan();
       check(rbrack);
+      type = new Struct(type); // create new array
     }
+    return type;
   }
 
   /**
@@ -498,11 +580,25 @@ public final class Parser {
     else if(sym == new_) {
       scan();
       check(ident);
+
+      Obj factorNewObj = tab.find(t.val);
+
+      if(factorNewObj.kind != Obj.Kind.Type) { // ident after "new" is not a type
+        error(TYPE_EXPECTED);
+      }
+
       if(sym == lbrack) {
         scan();
         Expr();
         check(rbrack);
+
+        return; // exit to allow instance of array of int/char
       }
+
+      if(factorNewObj.type.kind != Struct.Kind.Class) { // if factor is not an array, then it must be class
+        error(CLASS_TYPE_EXPECTED);
+      }
+
     }
     else if(sym == lpar) {
       scan();
@@ -519,6 +615,7 @@ public final class Parser {
    */
   private void Designator() {
     check(ident);
+    Obj designatorObj = tab.find(t.val);
     while(sym == period || sym == lbrack) {
       if(sym == lbrack) {
         scan();
@@ -527,10 +624,14 @@ public final class Parser {
         }
         Expr();
         check(rbrack);
+
+        // access to type of array elements
+        designatorObj = new Obj(Obj.Kind.Var, "", designatorObj.type.elemType);
       }
       else { // "." is read
         scan();
         check(ident);
+        tab.findField(t.val, designatorObj.type);
       }
     }
   }
