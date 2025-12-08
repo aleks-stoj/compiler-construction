@@ -1,5 +1,6 @@
 package ssw.mj.impl;
 
+import ssw.mj.Errors;
 import ssw.mj.codegen.Label;
 import ssw.mj.codegen.Operand;
 
@@ -222,6 +223,27 @@ public final class Code {
    */
   public void load(Operand x) {
     // TODO Exercise UE-P-5
+    switch(x.kind) {
+      case Con: loadConst(x.val); break;
+      case Local:
+          switch (x.adr) {
+            case 0: put(OpCode.load_0); break;
+            case 1: put(OpCode.load_1); break;
+            case 2: put(OpCode.load_2); break;
+            case 3: put(OpCode.load_3); break;
+            default: put(OpCode.load); put(x.adr); break;
+          }
+          break;
+      case Static: put(OpCode.getstatic); put2(x.adr); break;
+      case Stack: break; // operand already loaded, no need to load again
+      case Fld: put(OpCode.getfield); put2(x.adr); break;
+      case Elem:
+        if(x.type == Tab.charType) {put(OpCode.baload);}
+        else {put(OpCode.aload);}
+        break;
+      default: parser.error(Errors.Message.CANNOT_LOAD_OPERAND);
+    }
+    x.kind = Operand.Kind.Stack; // remember that value is loaded
   }
 
   /**
@@ -229,6 +251,8 @@ public final class Code {
    */
   public void loadConst(int n) {
     // TODO Exercise UE-P-5
+    put(OpCode.getstatic);
+    put2(n);
   }
 
   /**
@@ -236,6 +260,25 @@ public final class Code {
    */
   public void assign(Operand x, Operand y) {
     // TODO Exercise UE-P-5
+    load(y);
+    switch (x.kind) {
+      case Local:
+        switch (x.adr) {
+          case 0: put(OpCode.store_0); break;
+          case 1: put(OpCode.store_1); break;
+          case 2: put(OpCode.store_2); break;
+          case 3: put(OpCode.store_3); break;
+          default: put(OpCode.store); put2(x.adr); break;
+        }
+        break;
+      case Static: put(OpCode.putstatic); put2(x.adr); break;
+      case Fld: put(OpCode.putfield); put2(x.adr); break;
+      case Elem:
+        if(x.type == Tab.charType) {put(OpCode.bastore);}
+        else {put(OpCode.astore);}
+        break;
+      default: parser.error(Errors.Message.CANNOT_STORE_TO_READONLY);
+    }
   }
 
   /**
@@ -243,6 +286,9 @@ public final class Code {
    */
   public void inc(Operand x, int n) {
     // TODO Exercise UE-P-5
+    load(x);
+    loadConst(n);
+    put(OpCode.add);
   }
 
   /**
