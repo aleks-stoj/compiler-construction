@@ -251,8 +251,18 @@ public final class Code {
    */
   public void loadConst(int n) {
     // TODO Exercise UE-P-5
-    put(OpCode.getstatic);
-    put2(n);
+    switch (n) {
+      case 0 -> put(OpCode.const_0);
+      case 1 -> put(OpCode.const_1);
+      case 2 -> put(OpCode.const_2);
+      case 3 -> put(OpCode.const_3);
+      case 4 -> put(OpCode.const_4);
+      case 5 -> put(OpCode.const_5);
+      default -> {
+        put(OpCode.const_);
+        put2(n);
+      }
+    }
   }
 
   /**
@@ -286,9 +296,26 @@ public final class Code {
    */
   public void inc(Operand x, int n) {
     // TODO Exercise UE-P-5
-    load(x);
-    loadConst(n);
-    put(OpCode.add);
+    switch (x.kind) {
+      case Local -> {
+        put(OpCode.inc);
+        put2(x.adr);
+        put2(n);
+      }
+      case Static -> {
+        load(x);
+        loadConst(n);
+        put(OpCode.add);
+        assign(x, x);
+      }
+      case Fld, Elem -> {
+        prepareLhsOfCompoundAssignment(x);
+        load(x); // get field
+        loadConst(n);
+        put(OpCode.add);
+        assign(x, x); // TODO: find out what actual y for assignment should be
+      }
+    }
   }
 
   /**
@@ -299,7 +326,19 @@ public final class Code {
     // TODO Exercise UE-P-5
     // TODO: Field accesses (such as x.y) or array accesses (such as arr[2]) on the left-hand side of
     // an compound assignment (e.g., arr[2] += 4) need to correctly use dup or dup2 before load. Implement here.
-
+    switch (x.kind) {
+      case Fld -> {
+        load(x);
+        put(OpCode.dup);
+        load(x);
+      }
+      case Elem -> {
+        load(x);
+        loadConst(x.adr); // TODO: use actual index of array, not offset
+        put(OpCode.dup2);
+        load(x);
+      }
+    }
 
     // Do not switch kind to Stack after loading x.
     // We still need its kind later on during the assign().
