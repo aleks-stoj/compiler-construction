@@ -1,11 +1,13 @@
 package ssw.mj.impl;
 
 import ssw.mj.Errors.Message;
+import ssw.mj.codegen.Operand;
 import ssw.mj.scanner.Token;
 import ssw.mj.symtab.Obj;
 import ssw.mj.symtab.Struct;
 
 import java.util.EnumSet;
+import java.util.Objects;
 
 import static ssw.mj.Errors.Message.*;
 import static ssw.mj.scanner.Token.Kind.*;
@@ -207,6 +209,11 @@ public final class Parser {
     }
     check(rbrace);
 
+    // check if main exists
+    if(code.mainpc == -1) {
+      error(MAIN_NOT_FOUND);
+    }
+
     progObj.locals = tab.curScope.locals(); // properly set program's local to the locals of the current scope before closing
     tab.closeScope();
   }
@@ -285,6 +292,7 @@ public final class Parser {
 
     check(rbrace);
 
+    code.dataSize = tab.curScope.nVars();
     tab.closeScope();
   }
 
@@ -322,6 +330,9 @@ public final class Parser {
 
     check(rpar);
 
+    code.put(Code.OpCode.enter);
+    code.put(methObj.nPars); // enter first argument
+
     if(methName.equals("main")) {
       if(type != Tab.noType) { // main return type not void
         error(MAIN_NOT_VOID);
@@ -329,11 +340,14 @@ public final class Parser {
       if(methParams > 0) { // main has parameters
         error(MAIN_WITH_PARAMS);
       }
+      code.mainpc = methObj.adr;
     }
 
     while(sym == ident) {
       VarDecl();
     }
+
+    code.put(tab.curScope.locals().size()); // enter second argument
 
     if(tab.curScope.locals().size() > MAX_LOCALS) {
       error(TOO_MANY_LOCALS);
@@ -344,6 +358,15 @@ public final class Parser {
     methObj.nPars = methParams;
     methObj.locals = tab.curScope.locals();
     tab.closeScope();
+
+    if(type == Tab.noType) { // void methods
+      code.put(Code.OpCode.exit);
+      code.put(Code.OpCode.return_);
+    }
+    else { // non-void methods
+      code.put(Code.OpCode.trap);
+      code.put(1);
+    }
   }
 
   /**
@@ -403,20 +426,53 @@ public final class Parser {
   }
 
   private void Statement() {
+    Operand x;
     if(sym == ident) {
-      Designator();
+      x = Designator();
       if(firstAssignOp.contains(sym)) {
-        AssignOp();
-        Expr();
+        if(x.isReadOnly()) { // designator is read-only; attempting to write to it causes an error
+          error(CANNOT_STORE_TO_READONLY, x.kind);
+        }
+        Code.OpCode assignmentOp = AssignOp();
+
+        Operand y = Expr();
+
+        if(!y.type.assignableTo(x.type)) {
+          error(INCOMPATIBLE_TYPES);
+        }
+
+        if(assignmentOp != Code.OpCode.nop) { // compound assign
+          code.prepareLhsOfCompoundAssignment(x);
+          code.load(y);
+          code.put(assignmentOp);
+          code.assign(x, new Operand(x.type)); // get calculated value from stack and assign to LHS
+        }
+        else { // regular assign (=)
+          code.assign(x, y);
+        }
       }
       else if(sym == lpar) {
         ActPars();
       }
       else if(sym == pplus) {
+        if(x.type != Tab.intType) {
+          error(INC_DEC_EXPECTS_INT);
+        }
+        if(x.isReadOnly()) { // designator is read-only; attempting to write to it causes an error
+          error(CANNOT_STORE_TO_READONLY, x.kind);
+        }
         scan();
+        code.inc(x, 1);
       }
       else if(sym == mminus) {
+        if(x.type != Tab.intType) {
+          error(INC_DEC_EXPECTS_INT);
+        }
+        if(x.isReadOnly()) { // designator is read-only; attempting to write to it causes an error
+          error(CANNOT_STORE_TO_READONLY, x.kind);
+        }
         scan();
+        code.inc(x, -1);
       }
       else {
         error(INVALID_DESIGNATOR_STATEMENT);
@@ -455,18 +511,51 @@ public final class Parser {
     else if(sym == read) {
       scan();
       check(lpar);
-      Designator();
+      x = Designator();
+      // x = int => read
+      // x = char => bread
+      if(x.type != Tab.intType && x.type != Tab.charType) {
+        error(ILLEGAL_READ_ARGUMENT);
+      }
+      if(x.type == Tab.intType) {
+        code.put(Code.OpCode.read);
+      }
+      else if(x.type == Tab.charType) {
+        code.put(Code.OpCode.bread);
+      }
+
+      code.assign(x, new Operand(x.type)); // get value from stack
+
       check(rpar);
       check(semicolon);
+      //code.assign(x, x); // TODO: don't know if this is correct; what is meant by "assign Designator its value" with the given helper methods
     }
     else if(sym == print) {
+      Operand width = new Operand(0); // optional width
       scan();
       check(lpar);
-      Expr();
+      x = Expr();
+
+      if(x.type != Tab.intType && x.type != Tab.charType) {
+        error(ILLEGAL_PRINT_ARGUMENT);
+      }
+
+      code.load(x);
       if(sym == comma) {
         scan();
         check(number);
+        width = new Operand(t.numVal); // optional width
       }
+
+      code.load(width);
+
+      if(x.type == Tab.intType) {
+        code.put(Code.OpCode.print);
+      }
+      else if(x.type == Tab.charType) {
+        code.put(Code.OpCode.bprint);
+      }
+
       check(rpar);
       check(semicolon);
     }
@@ -481,26 +570,30 @@ public final class Parser {
     }
   }
 
-  private void AssignOp() {
+  private Code.OpCode AssignOp() {
+    Code.OpCode op = Code.OpCode.nop;
     switch (sym) {
       case assign: scan(); break;
-      case plusas: scan(); break;
-      case minusas: scan(); break;
-      case timesas: scan(); break;
-      case slashas: scan(); break;
-      case remas: scan(); break;
+      case plusas: scan(); op = Code.OpCode.add; break;
+      case minusas: scan(); op = Code.OpCode.sub; break;
+      case timesas: scan(); op = Code.OpCode.mul; break;
+      case slashas: scan(); op = Code.OpCode.div; break;
+      case remas: scan(); op = Code.OpCode.rem; break;
       default: error(INVALID_ASSIGN_OP);
     }
+    return op;
   }
 
   private void ActPars() {
     check(lpar);
 
     if(firstExpr.contains(sym)) {
-      Expr();
+      Operand x = Expr();
+      code.load(x); // load onto estack
       while (sym == comma) {
         scan();
-        Expr();
+        x = Expr();
+        code.load(x); // load onto estack
       }
     }
 
@@ -526,9 +619,12 @@ public final class Parser {
   }
 
   private void CondFact() {
-    Expr();
+    Operand x = Expr();
     Relop();
-    Expr();
+    Operand y = Expr();
+    if(!y.type.compatibleWith(x.type)) {
+      error(INCOMPATIBLE_TYPES);
+    }
   }
 
   private void Relop() {
@@ -543,39 +639,86 @@ public final class Parser {
     }
   }
 
-  private void Expr() {
+  private Operand Expr() {
+    boolean isNeg = false; // expr is pre-appended with "-"
     if(sym == minus) {
       scan();
+      isNeg = true;
     }
-    Term();
+
+    Operand x = Term();
+
+    if(isNeg) {
+      if(x.type != Tab.intType) {
+        error(UNARY_MINUS_EXPECTS_INT);
+      }
+
+      if(x.kind == Operand.Kind.Con) {
+        x.val = x.val * -1;
+      }
+      else {
+        code.load(x);
+        code.put(Code.OpCode.neg);
+        x = new Operand(x.type); // retrieve negative value from stack
+      }
+    }
 
     while(firstAddOp.contains(sym)) {
-      AddOp();
-      Term();
+      Code.OpCode op = AddOp();
+      code.load(x);
+      Operand y = Term();
+      if(x.type != Tab.intType || y.type != Tab.intType) {
+        error(INCOMPATIBLE_TYPES);
+      }
+      code.load(y);
+      code.put(op); // perform addition/subtraction of x and y
+      x = new Operand(x.type); // get addop value from stack
     }
+
+    return x;
   }
 
-  private void Term() {
-    Factor();
+  private Operand Term() {
+    Operand x = Factor();
 
     while(firstMulOp.contains(sym)) {
-      MulOp();
-      Factor();
+      Code.OpCode op = MulOp();
+      code.load(x);
+      Operand y = Factor();
+      if(x.type != Tab.intType || y.type != Tab.intType) {
+        error(INCOMPATIBLE_TYPES);
+      }
+      code.load(y);
+      code.put(op);
+      x = new Operand(x.type); // get mulop value from stack
     }
+
+    return x;
   }
 
-  private void Factor() {
+  private Operand Factor() {
+    Operand x;
     if(sym == ident) {
-      Designator();
+      x = Designator();
       if(sym == lpar) {
+        if(x.kind == Operand.Kind.Meth && x.type == Tab.noType) {
+          error(VOID_CALL_IN_EXPRESSION);
+        }
         ActPars();
+        return new Operand(x.type); // return operand with return type of method
       }
+      return x;
     }
     else if(sym == number) {
       scan();
+      x = new Operand(t.numVal);
+      return x;
     }
     else if(sym == charConst) {
       scan();
+      x = new Operand(t.numVal);
+      x.type = Tab.charType; // explicitly override type to char to get bprint/bread
+      return x;
     }
     else if(sym == new_) {
       scan();
@@ -589,68 +732,150 @@ public final class Parser {
 
       if(sym == lbrack) {
         scan();
-        Expr();
+        Operand y = Expr();
+
+        // array size not of type int
+        if(y.type != Tab.intType) {
+          error(ARRAY_SIZE_EXPECTS_INT);
+        }
+
         check(rbrack);
 
-        return; // exit to allow instance of array of int/char
+        code.load(y);
+        code.put(Code.OpCode.newarray);
+
+        // Differentiate n elems as required per MicroJava spec
+        if(factorNewObj.type == Tab.charType) { // byte size for char
+          code.put(0);
+        }
+        else { // word size for everything else
+          code.put(1);
+        }
+
+        // exit to allow instance of array of int/char
+        return new Operand(new Struct(factorNewObj.type));
       }
 
       if(factorNewObj.type.kind != Struct.Kind.Class) { // if factor is not an array, then it must be class
         error(CLASS_TYPE_EXPECTED);
       }
 
+      // instantiate class
+      code.put(Code.OpCode.new_);
+      code.put2(factorNewObj.type.fields.size());
+
+      return new Operand(factorNewObj.type);
     }
     else if(sym == lpar) {
       scan();
-      Expr();
+      x = Expr();
+
+      // method call in expr, but method returns void
+      if(x.kind == Operand.Kind.Meth && x.type == Tab.noType) {
+        error(VOID_CALL_IN_EXPRESSION);
+      }
+
       check(rpar);
+      return x;
     }
     else {
       error(INVALID_FACTOR);
     }
+    return new Operand(Tab.intType); // return operand of type int to prevent further errors
   }
 
   /**
    * <code>Designator = ident { "." ident | "[" [ "~" ] Expr "]" }.</code>
    */
-  private void Designator() {
+  private Operand Designator() {
     check(ident);
     Obj designatorObj = tab.find(t.val);
+    Operand x = new Operand(designatorObj, this);
     while(sym == period || sym == lbrack) {
       if(sym == lbrack) {
+        // in case operand is not array
+        // change kind and type to prevent further errors
+        if(!Objects.equals(x.type.kind, Struct.Kind.Arr)) {
+          error(INDEXED_ACCESS_TO_NON_ARRAY);
+          x.kind = Operand.Kind.None;
+          x.type = Tab.noType;
+        }
         scan();
+        boolean indexFromEnd = false;
+
+        code.load(x);
+
+        // index-from-end
         if(sym == tilde) {
           scan();
+          indexFromEnd = true;
+          code.put(Code.OpCode.dup);
+          code.put(Code.OpCode.arraylength);
+          //code.load(new Operand(t.numVal));
         }
-        Expr();
+
+        Operand y = Expr();
+
+        if(y.type != Tab.intType) {
+          error(ARRAY_INDEX_EXPECTS_INT);
+        }
+
+        code.load(y);
+
+
+        //Expr();
+
+        /*if(x.kind != Operand.Kind.Elem) { // attempting to access a non-array via an index
+
+        } */
+
         check(rbrack);
+
+        if(indexFromEnd) code.put(Code.OpCode.sub); // a[i - n]
+
+        x.kind = Operand.Kind.Elem;
+        x.type = x.type.elemType;
 
         // access to type of array elements
         designatorObj = new Obj(Obj.Kind.Var, "", designatorObj.type.elemType);
       }
       else { // "." is read
+        if(x.type.kind != Struct.Kind.Class) {
+          error(FIELD_ACCESS_TO_NON_CLASS);
+         }
+
+        code.load(x); // load variable before field access
         scan();
         check(ident);
-        tab.findField(t.val, designatorObj.type);
+
+        Obj obj = tab.findField(t.val, x.type);
+        x.kind = Operand.Kind.Fld;
+        x.type = obj.type;
+        x.adr = obj.adr;
       }
     }
+    return x;
   }
 
-  private void AddOp() {
+  private Code.OpCode AddOp() {
+    Code.OpCode op = Code.OpCode.nop; // nop in case sym is no add operation. prevents accidentally doing something wrong
     switch (sym) {
-      case plus: scan(); break;
-      case minus: scan(); break;
+      case plus: scan(); op = Code.OpCode.add; break;
+      case minus: scan(); op = Code.OpCode.sub; break;
       default: error(INVALID_ADD_OP);
     }
+    return op;
   }
 
-  private void MulOp() {
+  private Code.OpCode MulOp() {
+    Code.OpCode op = Code.OpCode.nop; // nop in case sym is no mul operation. prevents accidentally doing something wrong
     switch (sym) {
-      case times: scan(); break;
-      case slash: scan(); break;
-      case rem: scan(); break;
+      case times: scan(); op = Code.OpCode.mul; break;
+      case slash: scan(); op = Code.OpCode.div; break;
+      case rem: scan(); op = Code.OpCode.rem; break;
       default: error(INVALID_MUL_OP);
     }
+    return op;
   }
 
   // ...

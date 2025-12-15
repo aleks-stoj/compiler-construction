@@ -258,9 +258,10 @@ public final class Code {
       case 3 -> put(OpCode.const_3);
       case 4 -> put(OpCode.const_4);
       case 5 -> put(OpCode.const_5);
+      case -1 -> put(OpCode.const_m1);
       default -> {
         put(OpCode.const_);
-        put2(n);
+        put4(n);
       }
     }
   }
@@ -287,7 +288,7 @@ public final class Code {
         if(x.type == Tab.charType) {put(OpCode.bastore);}
         else {put(OpCode.astore);}
         break;
-      default: parser.error(Errors.Message.CANNOT_STORE_TO_READONLY);
+      default: parser.error(Errors.Message.CANNOT_STORE_TO_READONLY, x.kind);
     }
   }
 
@@ -299,21 +300,22 @@ public final class Code {
     switch (x.kind) {
       case Local -> {
         put(OpCode.inc);
-        put2(x.adr);
-        put2(n);
+        put(x.adr);
+        put(n);
       }
       case Static -> {
         load(x);
         loadConst(n);
         put(OpCode.add);
-        assign(x, x);
+        x.kind = Operand.Kind.Static;
+        assign(x, new Operand(x.type));
       }
       case Fld, Elem -> {
-        prepareLhsOfCompoundAssignment(x);
-        load(x); // get field
+        prepareLhsOfCompoundAssignment(x); // prepare left hand side for field and array
+        // generate bytecode for increment
         loadConst(n);
         put(OpCode.add);
-        assign(x, x); // TODO: find out what actual y for assignment should be
+        assign(x, new Operand(x.type)); // get incremented value from stack and assign it to operand
       }
     }
   }
@@ -328,13 +330,10 @@ public final class Code {
     // an compound assignment (e.g., arr[2] += 4) need to correctly use dup or dup2 before load. Implement here.
     switch (x.kind) {
       case Fld -> {
-        load(x);
         put(OpCode.dup);
         load(x);
       }
       case Elem -> {
-        load(x);
-        loadConst(x.adr); // TODO: use actual index of array, not offset
         put(OpCode.dup2);
         load(x);
       }
