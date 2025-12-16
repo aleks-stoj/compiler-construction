@@ -435,6 +435,10 @@ public final class Parser {
         }
         Code.OpCode assignmentOp = AssignOp();
 
+        if(assignmentOp != Code.OpCode.nop) { // prepare LHS (if Field or Array Element) before continuing with RHS of statement
+          code.prepareLhsOfCompoundAssignment(x);
+        }
+
         Operand y = Expr();
 
         if(!y.type.assignableTo(x.type)) {
@@ -442,7 +446,6 @@ public final class Parser {
         }
 
         if(assignmentOp != Code.OpCode.nop) { // compound assign
-          code.prepareLhsOfCompoundAssignment(x);
           code.load(y);
           code.put(assignmentOp);
           code.assign(x, new Operand(x.type)); // get calculated value from stack and assign to LHS
@@ -528,7 +531,6 @@ public final class Parser {
 
       check(rpar);
       check(semicolon);
-      //code.assign(x, x); // TODO: don't know if this is correct; what is meant by "assign Designator its value" with the given helper methods
     }
     else if(sym == print) {
       Operand width = new Operand(0); // optional width
@@ -536,11 +538,12 @@ public final class Parser {
       check(lpar);
       x = Expr();
 
+      code.load(x);
+
       if(x.type != Tab.intType && x.type != Tab.charType) {
         error(ILLEGAL_PRINT_ARGUMENT);
       }
 
-      code.load(x);
       if(sym == comma) {
         scan();
         check(number);
