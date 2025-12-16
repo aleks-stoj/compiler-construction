@@ -802,6 +802,13 @@ public final class Parser {
           error(INDEXED_ACCESS_TO_NON_ARRAY);
           x.kind = Operand.Kind.None;
           x.type = Tab.noType;
+
+          // continue reading invalid operand for later processing
+          scan();
+          Expr();
+          check(rbrack);
+
+          return x;
         }
         scan();
         boolean indexFromEnd = false;
@@ -814,7 +821,6 @@ public final class Parser {
           indexFromEnd = true;
           code.put(Code.OpCode.dup);
           code.put(Code.OpCode.arraylength);
-          //code.load(new Operand(t.numVal));
         }
 
         Operand y = Expr();
