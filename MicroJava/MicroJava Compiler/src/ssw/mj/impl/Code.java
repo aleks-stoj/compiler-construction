@@ -279,7 +279,7 @@ public final class Code {
           case 1: put(OpCode.store_1); break;
           case 2: put(OpCode.store_2); break;
           case 3: put(OpCode.store_3); break;
-          default: put(OpCode.store); put2(x.adr); break;
+          default: put(OpCode.store); put(x.adr); break;
         }
         break;
       case Static: put(OpCode.putstatic); put2(x.adr); break;
@@ -307,8 +307,8 @@ public final class Code {
         load(x);
         loadConst(n);
         put(OpCode.add);
-        x.kind = Operand.Kind.Static;
-        assign(x, new Operand(x.type));
+        put(OpCode.putstatic);
+        put2(x.adr);
       }
       case Fld, Elem -> {
         prepareLhsOfCompoundAssignment(x); // prepare left hand side for field and array
@@ -348,6 +348,16 @@ public final class Code {
 
   public void methodCall(Operand x) {
     // TODO Exercise UE-P-6
+    if(x.obj == parser.tab.ordObj || x.obj == parser.tab.chrObj) {
+      // generate nothing
+    }
+    else if(x.obj == parser.tab.lenObj) {
+      put(OpCode.arraylength);
+    }
+    else {
+      put(OpCode.call);
+      put2(x.adr - (pc-1));
+    }
   }
 
   /**
@@ -355,6 +365,8 @@ public final class Code {
    */
   public void jump(Label lab) {
     // TODO Exercise UE-P-6
+    put(OpCode.jmp);
+    lab.put();
   }
 
   /**
@@ -363,6 +375,8 @@ public final class Code {
    */
   public void tJump(CompOp op, Label to) {
     // TODO Exercise UE-P-6
+    put(CompOp.toOpCode(op)); // jeq, jne, jlt, jle, jgt, jge
+    to.put();
   }
 
   /**
@@ -371,6 +385,8 @@ public final class Code {
    */
   public void fJump(CompOp op, Label to) {
     // TODO Exercise UE-P-6
+    put(CompOp.toOpCode(CompOp.invert(op))); // jne, jeq, jge, jgt, jle, jlt
+    to.put();
   }
 
   // =================================================

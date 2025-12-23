@@ -1,12 +1,14 @@
 package ssw.mj.impl;
 
 import ssw.mj.Errors.Message;
+import ssw.mj.codegen.Label;
 import ssw.mj.codegen.Operand;
 import ssw.mj.scanner.Token;
 import ssw.mj.symtab.Obj;
 import ssw.mj.symtab.Struct;
 
 import java.util.EnumSet;
+import java.util.Iterator;
 import java.util.Objects;
 
 import static ssw.mj.Errors.Message.*;
@@ -135,6 +137,7 @@ public final class Parser {
   private static final EnumSet<Token.Kind> recoverMethodDecl;
   private static final EnumSet<Token.Kind> recoverStatement;
 
+  // UE-P-6 helpers
 
   static {
     // Initialize first and follow sets.
@@ -215,6 +218,7 @@ public final class Parser {
     }
 
     progObj.locals = tab.curScope.locals(); // properly set program's local to the locals of the current scope before closing
+    code.dataSize = tab.curScope.nVars();
     tab.closeScope();
   }
 
@@ -292,7 +296,6 @@ public final class Parser {
 
     check(rbrace);
 
-    code.dataSize = tab.curScope.nVars();
     tab.closeScope();
   }
 
@@ -312,6 +315,10 @@ public final class Parser {
       error(INVALID_METHOD_DECL);
     }
 
+    if(type.isRefType()) { // return type is reference type
+      error(ILLEGAL_METHOD_RETURN_TYPE);
+    }
+
     check(ident);
 
     String methName = t.val;
@@ -326,7 +333,8 @@ public final class Parser {
       FormPars();
     }
 
-    int methParams = tab.curScope.locals().size(); // get number of method parameters
+    methObj.nPars = tab.curScope.locals().size();
+    int methParams = methObj.nPars; // get number of method parameters
 
     check(rpar);
 
@@ -353,19 +361,19 @@ public final class Parser {
       error(TOO_MANY_LOCALS);
     }
 
-    Block();
+    Block(null, methObj);
 
-    methObj.nPars = methParams;
     methObj.locals = tab.curScope.locals();
     tab.closeScope();
 
-    if(type == Tab.noType) { // void methods
-      code.put(Code.OpCode.exit);
-      code.put(Code.OpCode.return_);
-    }
-    else { // non-void methods
+
+    if(type != Tab.noType) { // non-void methods
       code.put(Code.OpCode.trap);
       code.put(1);
+    }
+    else {
+      code.put(Code.OpCode.exit);
+      code.put(Code.OpCode.return_);
     }
   }
 
@@ -394,6 +402,7 @@ public final class Parser {
     Obj o = tab.find(t.val);
     if(o.kind != Obj.Kind.Type) {
       error(TYPE_EXPECTED);
+      return Tab.noType;
     }
     Struct type = o.type;
     if(sym == lbrack) {
@@ -407,12 +416,12 @@ public final class Parser {
   /**
    * <code>Block = "{" { Statement } "}".</code>
    */
-  private void Block() {
+  private void Block(Label breakLabel, Obj currMethod) {
     check(lbrace);
 
     while(true) {
       if(firstStatement.contains(sym)) {
-        Statement();
+        Statement(breakLabel, currMethod);
       }
       else if(followStatement.contains(sym)) {
         break;
@@ -425,10 +434,9 @@ public final class Parser {
     check(rbrace);
   }
 
-  private void Statement() {
-    Operand x;
+  private void Statement(Label breakLabel, Obj currMethod) {
     if(sym == ident) {
-      x = Designator();
+      Operand x = Designator();
       if(firstAssignOp.contains(sym)) {
         if(x.isReadOnly()) { // designator is read-only; attempting to write to it causes an error
           error(CANNOT_STORE_TO_READONLY, x.kind);
@@ -446,6 +454,9 @@ public final class Parser {
         }
 
         if(assignmentOp != Code.OpCode.nop) { // compound assign
+          Operand.Kind prevKind = x.kind;
+          if(!x.kind.equals(Operand.Kind.Elem) && !x.kind.equals(Operand.Kind.Fld)) code.load(x); // prevents loading an array or field more than once
+          x.kind = prevKind;
           code.load(y);
           code.put(assignmentOp);
           code.assign(x, new Operand(x.type)); // get calculated value from stack and assign to LHS
@@ -455,7 +466,11 @@ public final class Parser {
         }
       }
       else if(sym == lpar) {
-        ActPars();
+        ActPars(x);
+        code.methodCall(x);
+        if(x.type != Tab.noType) {
+          code.put(Code.OpCode.pop);
+        }
       }
       else if(sym == pplus) {
         if(x.type != Tab.intType) {
@@ -485,36 +500,82 @@ public final class Parser {
     else if(sym == if_) {
       scan();
       check(lpar);
-      Condition();
+
+      Operand x = Condition();
+      if(x.op != null) {
+        code.fJump(x.op, x.fLabel);
+      }
+      x.tLabel.here();
+
       check(rpar);
-      Statement();
+      Statement(breakLabel, currMethod);
+
       if(sym == else_) {
         scan();
-        Statement();
+        Label end = new Label(code);
+        code.jump(end);
+        x.fLabel.here();
+
+        Statement(breakLabel, currMethod);
+        end.here();
+      }
+      else { // no else branch
+        x.fLabel.here();
       }
     }
     else if(sym == while_) {
       scan();
       check(lpar);
-      Condition();
+      // setting label to return to for each iteration of loop
+      Label top = new Label(code);
+      Label exit = new Label(code);
+      top.here();
+
+      Operand x = Condition();
+      code.fJump(x.op, exit);
+      x.tLabel.here();
       check(rpar);
-      Statement();
+
+      Statement(exit, currMethod);
+
+      code.jump(top);
+      exit.here();
     }
     else if(sym == break_) {
       scan();
+      if(breakLabel == null) {
+        error(BREAK_OUTSIDE_LOOP);
+      }
+      else {
+        code.jump(breakLabel);
+      }
       check(semicolon);
     }
     else if(sym == return_) {
       scan();
       if(firstExpr.contains(sym)) {
-        Expr();
+        if(currMethod.type == Tab.noType) { // method is void but has return
+          error(UNEXPECTED_RETURN_VALUE);
+        }
+        Operand x = Expr();
+        code.load(x);
+        if(!x.type.assignableTo(currMethod.type)) { // method return type and actual expr in return do not match
+          error(RETURN_TYPE_MISMATCH);
+        }
       }
+      else { // return has no expr (return;)
+        if(currMethod.type != Tab.noType) { // method has return type but doesn't return anything
+          error(MISSING_RETURN_VALUE);
+        }
+      }
+      code.put(Code.OpCode.exit);
+      code.put(Code.OpCode.return_);
       check(semicolon);
     }
     else if(sym == read) {
       scan();
       check(lpar);
-      x = Designator();
+      Operand x = Designator();
       // x = int => read
       // x = char => bread
       if(x.type != Tab.intType && x.type != Tab.charType) {
@@ -536,7 +597,7 @@ public final class Parser {
       Operand width = new Operand(0); // optional width
       scan();
       check(lpar);
-      x = Expr();
+      Operand x = Expr();
 
       code.load(x);
 
@@ -563,7 +624,7 @@ public final class Parser {
       check(semicolon);
     }
     else if(sym == lbrace) {
-      Block();
+      Block(breakLabel, currMethod);
     }
     else if(sym == semicolon) {
       scan();
@@ -587,59 +648,111 @@ public final class Parser {
     return op;
   }
 
-  private void ActPars() {
+  private void ActPars(Operand m) {
     check(lpar);
+
+    if(m.kind != Operand.Kind.Meth) {
+      error(CALL_TO_NON_METHOD);
+      m.obj = tab.noObj; // set to noObj to prevent further issues (namely NullPointerException)
+    }
+
+    int aPars = 0;
+    int fPars = m.obj.nPars;
+    Iterator<Obj> fpIterator = m.obj.locals.values().stream().iterator(); // to check all formal pars, we have to iterate over them to gain access
 
     if(firstExpr.contains(sym)) {
       Operand x = Expr();
       code.load(x); // load onto estack
+      aPars++;
+
+      if(fpIterator != null && fpIterator.hasNext()) {
+        Obj fp = fpIterator.next();
+        if(!x.type.assignableTo(fp.type)) {
+          error(ARGUMENT_TYPE_MISMATCH);
+        }
+      }
+
       while (sym == comma) {
         scan();
         x = Expr();
         code.load(x); // load onto estack
+        aPars++;
+        //fp = fp.next;
+        if(fpIterator != null && fpIterator.hasNext()) {
+          Obj fp = fpIterator.next();
+          if(!x.type.assignableTo(fp.type)) {
+            error(ARGUMENT_TYPE_MISMATCH);
+          }
+        }
       }
+    }
+
+    if(aPars != fPars) { // number of actual parameters and formal parameters do not align
+      error(WRONG_ARGUMENT_COUNT);
     }
 
     check(rpar);
   }
 
-  private void Condition() {
-    CondTerm();
+  private Operand Condition() {
+    Operand x = CondTerm();
 
     while(sym == or) {
+      code.tJump(x.op, x.tLabel);
       scan();
-      CondTerm();
+      x.fLabel.here();
+      Operand y = CondTerm();
+      x.fLabel = y.fLabel;
+      x.op = y.op;
     }
+    return x;
   }
 
-  private void CondTerm() {
-    CondFact();
+  private Operand CondTerm() {
+    Operand x = CondFact();
 
     while(sym == and) {
+      code.fJump(x.op, x.fLabel);
       scan();
-      CondFact();
+      Operand y = CondFact();
+      x.op = y.op;
     }
+    return x;
   }
 
-  private void CondFact() {
+  private Operand CondFact() {
     Operand x = Expr();
-    Relop();
+    code.load(x);
+    Code.CompOp compOp = Relop();
     Operand y = Expr();
+
     if(!y.type.compatibleWith(x.type)) {
       error(INCOMPATIBLE_TYPES);
     }
+    if(x.type.isRefType() && y.type.isRefType()) { // comparing reference types
+      if(!compOp.equals(Code.CompOp.eq) && !compOp.equals(Code.CompOp.ne)) { // not == or !=
+        error(ILLEGAL_REFERENCE_COMPARISON);
+      }
+    }
+
+    code.load(y);
+
+    x = new Operand(compOp, code);
+    return x;
   }
 
-  private void Relop() {
+  private Code.CompOp Relop() {
+    Code.CompOp op = null;
     switch (sym) {
-      case eql: scan(); break;
-      case neq: scan(); break;
-      case gtr: scan(); break;
-      case geq: scan(); break;
-      case lss: scan(); break;
-      case leq: scan(); break;
+      case eql: scan(); op = Code.CompOp.eq; break;
+      case neq: scan(); op = Code.CompOp.ne; break;
+      case gtr: scan(); op = Code.CompOp.gt; break;
+      case geq: scan(); op = Code.CompOp.ge; break;
+      case lss: scan(); op = Code.CompOp.lt; break;
+      case leq: scan(); op = Code.CompOp.le; break;
       default: error(INVALID_REL_OP);
     }
+    return op;
   }
 
   private Operand Expr() {
@@ -707,7 +820,9 @@ public final class Parser {
         if(x.kind == Operand.Kind.Meth && x.type == Tab.noType) {
           error(VOID_CALL_IN_EXPRESSION);
         }
-        ActPars();
+        ActPars(x);
+        code.methodCall(x);
+        x.kind = Operand.Kind.Stack;
         return new Operand(x.type); // return operand with return type of method
       }
       return x;
@@ -830,13 +945,6 @@ public final class Parser {
         }
 
         code.load(y);
-
-
-        //Expr();
-
-        /*if(x.kind != Operand.Kind.Elem) { // attempting to access a non-array via an index
-
-        } */
 
         check(rbrack);
 
